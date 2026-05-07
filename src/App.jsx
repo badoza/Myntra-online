@@ -99,8 +99,9 @@ export default function App() {
     return () => socket.off('users-list');
   }, []);
 
+  // FIXED GOOGLE MAPS LINK: Drops a pin exactly at the coordinates
   const openInGoogleMaps = (lat, lng) => {
-    window.open(`http://googleusercontent.com/maps.google.com/maps?q=${lat},${lng}`, '_blank');
+    window.open(`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`, '_blank');
   };
 
   // ==========================================
@@ -108,11 +109,12 @@ export default function App() {
   // ==========================================
   if (role === 'admin') {
     return (
-      <div className="flex h-screen w-full bg-slate-950 text-white font-sans overflow-hidden">
+      // Changed to flex-col for mobile, md:flex-row for desktop
+      <div className="flex flex-col md:flex-row h-screen w-full bg-slate-950 text-white font-sans overflow-hidden">
         
-        {/* Sidebar */}
-        <div className="w-80 bg-slate-900 border-r border-slate-800 p-4 flex flex-col z-[1000] shadow-2xl">
-          <div className="flex items-center gap-2 mb-8 p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+        {/* Sidebar - Takes 40% height on mobile, full height on desktop */}
+        <div className="w-full md:w-80 h-[40vh] md:h-full bg-slate-900 border-b md:border-b-0 md:border-r border-slate-800 p-4 flex flex-col z-[1000] shadow-2xl shrink-0 order-2 md:order-1">
+          <div className="flex items-center gap-2 mb-4 md:mb-8 p-2 md:p-3 bg-red-500/10 rounded-lg border border-red-500/20">
             <ShieldCheck className="text-red-500 flex-shrink-0" />
             <h1 className="text-sm font-bold tracking-tight">COMMAND CENTER</h1>
           </div>
@@ -130,7 +132,7 @@ export default function App() {
                 <div 
                   key={u.userId} 
                   onClick={() => setSelectedUser(u)}
-                  className={`p-4 rounded-xl mb-3 cursor-pointer transition-all border ${selectedUser?.userId === u.userId ? 'bg-blue-600 border-blue-400 shadow-lg scale-[1.02]' : 'bg-slate-800 border-slate-700 hover:bg-slate-700'}`}
+                  className={`p-3 md:p-4 rounded-xl mb-3 cursor-pointer transition-all border ${selectedUser?.userId === u.userId ? 'bg-blue-600 border-blue-400 shadow-lg scale-[1.02]' : 'bg-slate-800 border-slate-700 hover:bg-slate-700'}`}
                 >
                   <div className="flex justify-between items-start mb-2">
                     <span className="font-bold text-sm truncate">{u.name}</span>
@@ -162,9 +164,9 @@ export default function App() {
           </div>
         </div>
 
-        {/* Map Area */}
-        <div className="flex-1 relative bg-slate-800">
-          <MapContainer center={[20.5937, 78.9629]} zoom={5} className="h-full w-full">
+        {/* Map Area - Takes 60% height on mobile, full height on desktop */}
+        <div className="flex-1 relative bg-slate-800 h-[60vh] md:h-full order-1 md:order-2">
+          <MapContainer center={[20.5937, 78.9629]} zoom={5} className="h-full w-full z-0">
             <TileLayer 
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
