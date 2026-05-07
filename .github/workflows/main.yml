@@ -1,0 +1,31 @@
+name: Build and Deploy Tracker
+
+on:
+  push:
+    branches:
+      - main # Or 'master', depending on your default branch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18' # Uses a stable Node version
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build Frontend
+        run: npm run build
+
+      # Add your deployment steps here. 
+      # For example, if deploying to Render, Vercel, or a VPS.
+      # - name: Deploy to Production
+      #   run: |
+      #     echo "Deployment script goes here"
