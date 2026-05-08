@@ -77,10 +77,11 @@ export default function App() {
           }
         }
 
+        // RESTORED ORIGINAL HIGH-ACCURACY SETTINGS
         const options = {
           enableHighAccuracy: true, 
           maximumAge: 0,            
-          timeout: 10000            
+          timeout: 5000            
         };
 
         navigator.geolocation.watchPosition(
@@ -112,9 +113,8 @@ export default function App() {
     return () => socket.off('users-list');
   }, []);
 
-  // FIXED GOOGLE MAPS LINK
   const openInGoogleMaps = (lat, lng) => {
-    window.open(`https://maps.google.com/maps?q=${lat},${lng}`, '_blank');
+    window.open(`https://www.google.com/maps?q=${lat},${lng}`, '_blank');
   };
 
   // ==========================================
@@ -141,7 +141,6 @@ export default function App() {
               const speedKmH = u.speed ? (u.speed * 3.6).toFixed(1) : 0;
               const isOnline = u.status === 'online';
               
-              // Format the last seen time
               const lastSeenDate = new Date(u.lastSeen || Date.now());
               const timeString = lastSeenDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
               const dateString = lastSeenDate.toLocaleDateString();
@@ -154,7 +153,6 @@ export default function App() {
                 >
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-2">
-                      {/* Status Indicator Dot */}
                       <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
                       <span className="font-bold text-sm truncate">{u.name}</span>
                     </div>
@@ -206,7 +204,6 @@ export default function App() {
                   eventHandlers={{
                     add: (e) => {
                       e.target.getElement().style.transition = "transform 1s linear";
-                      // Make offline markers slightly transparent
                       if (!isOnline) {
                         e.target.getElement().style.opacity = "0.5";
                       }
