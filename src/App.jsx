@@ -95,7 +95,7 @@ export default function App() {
   }, []);
 
   const openInGoogleMaps = (lat, lng) => {
-    window.open(`http://googleusercontent.com/maps.google.com/maps?q=${lat},${lng}`, '_blank');
+    window.open(`https://maps.google.com/maps?q=${lat},${lng}`, '_blank');
   };
 
   // --- Admin Action Handlers ---
